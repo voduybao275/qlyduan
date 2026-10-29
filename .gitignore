@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+*.zip
+
+# Dữ liệu chạy máy local (chứa mật khẩu MySQL, cookie đăng nhập)
+database.db
+chrome_profile/
+*.log
+
+# File sao lưu tay
+* copy*.py
+* copy *.py
