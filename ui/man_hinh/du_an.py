@@ -548,7 +548,7 @@ def tao_danh_sach(ung_dung):
 
     tk.Button(thanh_cong_cu, text="Check WP all", font=("Arial", 10, "bold"), bg="#FF9800", fg="white", command=lambda: update_all_wp_version(ung_dung)).pack(side="right", padx=5)
 
-    tk.Button(thanh_cong_cu, text="Mở công cụ WP", font=("Arial", 10, "bold"), bg="#FF9800", fg="white", command=lambda: update_wp_version(ung_dung)).pack(side="right", padx=5)
+    # tk.Button(thanh_cong_cu, text="Mở công cụ WP", font=("Arial", 10, "bold"), bg="#FF9800", fg="white", command=lambda: update_wp_version(ung_dung)).pack(side="right", padx=5)
 
     # 3. Bộ lọc
     filter_row = tk.Frame(ung_dung.vung_noi_dung, bg="#f0f0f0")
