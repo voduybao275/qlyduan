@@ -2,7 +2,7 @@
 import tkinter as tk
 from ui.man_hinh.cong_cu_wp import mo_cong_cu_wp
 from ui.man_hinh.du_an import (
-    _tai_file_mau, mo_import_excel, thong_ke_wp_version, xuat_excel,
+    _tai_file_mau, mo_import_excel, reset_du_lieu_du_an, xuat_excel,
 )
 
 def tao_menu(root, ung_dung):
@@ -49,6 +49,9 @@ def tao_menu(root, ung_dung):
     cong_cu_menu.add_command(
         label="Mở công cụ WP",
         command=lambda: mo_cong_cu_wp(ung_dung))
+    cong_cu_menu.add_command(
+        label="Resize hình",
+        command=lambda: ung_dung.hien_thi_noi_dung("resize_hinh"))
     menubar.add_cascade(label="Công cụ", menu=cong_cu_menu)
 
     # Menu "Dữ liệu" — import/export cần bảng dự án nên mở màn hình trước
@@ -73,10 +76,15 @@ def tao_menu(root, ung_dung):
     dulieu_menu.add_separator()
     dulieu_menu.add_command(
         label="Thống kê phiên bản WP",
-        command=lambda: thong_ke_wp_version(ung_dung))
+        command=lambda: ung_dung.hien_thi_noi_dung("thong_ke_wp"))
     dulieu_menu.add_command(
         label="Tải file Excel mẫu",
         command=lambda: _tai_file_mau(ung_dung))
+    dulieu_menu.add_separator()
+    dulieu_menu.add_command(
+        label="Reset dữ liệu dự án...",
+        command=lambda: _chay_tren_man_hinh_du_an(
+            lambda: reset_du_lieu_du_an(ung_dung)))
     menubar.add_cascade(label="Dữ liệu", menu=dulieu_menu)
 
     # Menu "Trợ giúp"

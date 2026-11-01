@@ -2,10 +2,12 @@
 """
 Đọc file Excel và import vào bảng du_an (MySQL).
 
-Cột Excel mong đợi (theo thứ tự hoặc theo tên header):
-    name, url, host, dev, status, deadline, wp_version
+Cột Excel mong đợi (theo tên header, không phân biệt hoa/thường):
+    mada, name, url, host, dev, status, deadline, wp_version
 
-Cột "name" là bắt buộc. Các cột còn lại có thể trống.
+Cột "name" phải có trong file nhưng giá trị được phép trống — dòng thiếu tên
+vẫn được import và lưu với tên rỗng. "mada" (mã dự án, ví dụ GKV_001) dùng để
+nhận diện dòng khi import; nếu trống thì nhận diện theo "name".
 """
 
 import os
@@ -21,7 +23,7 @@ from data import csdl
 
 # Thứ tự cột mong đợi
 COT_BAT_BUOC = ["name"]
-COT_TUY_CHON = ["url", "host", "dev", "status", "deadline", "wp_version"]
+COT_TUY_CHON = ["mada", "url", "host", "dev", "status", "deadline", "wp_version"]
 COT_HOP_LE = COT_BAT_BUOC + COT_TUY_CHON
 
 TRANG_THAI_HOP_LE = ["Chưa bắt đầu", "Đang làm", "Hoàn thành"]
@@ -73,6 +75,7 @@ def doc_file_excel(duong_dan):
 def chuan_hoa_dong(row):
     """
     Chuẩn hóa 1 dòng dữ liệu từ DataFrame thành dict.
+    Cột name có thể trống — dòng vẫn được import với tên để trống.
     Trả về (dict, danh_sach_loi).
     """
     loi = []
@@ -86,9 +89,7 @@ def chuan_hoa_dong(row):
         return val
 
     name = _lay("name")
-    if not name:
-        loi.append("Thiếu 'name'")
-
+    mada = _lay("mada")
     url = _lay("url")
     host = _lay("host")
     dev = _lay("dev")
@@ -123,6 +124,7 @@ def chuan_hoa_dong(row):
                 deadline = None
 
     du_lieu = {
+        "mada": mada,
         "name": name,
         "url": url,
         "host": host,
@@ -162,8 +164,8 @@ def import_vao_mysql(danh_sach_dict, che_do="bo_qua"):
     Import dữ liệu vào MySQL.
 
     che_do:
-        "bo_qua"  — nếu trùng name thì bỏ qua (an toàn)
-        "ghi_de"  — nếu trùng name thì UPDATE
+        "bo_qua"  — nếu trùng mã (hoặc trùng tên khi không có mã) thì bỏ qua
+        "ghi_de"  — nếu trùng thì UPDATE
     """
     thanh_cong = 0
     bo_qua = 0
@@ -171,46 +173,55 @@ def import_vao_mysql(danh_sach_dict, che_do="bo_qua"):
     ds_loi = []
 
     for du_lieu in danh_sach_dict:
+        ten = du_lieu["name"] or ""
         try:
-            # Kiểm tra đã tồn tại chưa (dựa vào name)
             with csdl.ket_noi() as cnx:
                 cursor = cnx.cursor()
-                cursor.execute(
-                    f"SELECT id FROM `{csdl.TABLE_DU_AN}` WHERE name = %s",
-                    (du_lieu["name"],),
-                )
-                existed = cursor.fetchone()
+                # Ưu tiên nhận diện theo mã dự án, sau đó mới theo tên
+                existed = None
+                if du_lieu["mada"]:
+                    cursor.execute(
+                        f"SELECT id FROM `{csdl.TABLE_DU_AN}` WHERE mada = %s",
+                        (du_lieu["mada"],),
+                    )
+                    existed = cursor.fetchone()
+                if existed is None and ten:
+                    cursor.execute(
+                        f"SELECT id FROM `{csdl.TABLE_DU_AN}` WHERE name = %s",
+                        (ten,),
+                    )
+                    existed = cursor.fetchone()
 
                 if existed:
                     if che_do == "bo_qua":
                         bo_qua += 1
                         cursor.close()
                         continue
-                    else:  # ghi_de
-                        cursor.execute(
-                            f"UPDATE `{csdl.TABLE_DU_AN}` SET "
-                            f"url=%s, host=%s, dev=%s, status=%s, "
-                            f"deadline=%s, wp_version=%s "
-                            f"WHERE id=%s",
-                            (
-                                du_lieu["url"], du_lieu["host"],
-                                du_lieu["dev"], du_lieu["status"],
-                                du_lieu["deadline"], du_lieu["wp_version"],
-                                existed[0],
-                            ),
-                        )
-                        cnx.commit()
-                        thanh_cong += 1
-                        cursor.close()
-                        continue
+                    # ghi_de: cập nhật toàn bộ thông tin theo dòng Excel
+                    cursor.execute(
+                        f"UPDATE `{csdl.TABLE_DU_AN}` SET "
+                        f"mada=%s, name=%s, url=%s, host=%s, dev=%s, status=%s, "
+                        f"deadline=%s, wp_version=%s "
+                        f"WHERE id=%s",
+                        (
+                            du_lieu["mada"], ten, du_lieu["url"],
+                            du_lieu["host"], du_lieu["dev"], du_lieu["status"],
+                            du_lieu["deadline"], du_lieu["wp_version"],
+                            existed[0],
+                        ),
+                    )
+                    cnx.commit()
+                    thanh_cong += 1
+                    cursor.close()
+                    continue
 
                 # Chưa tồn tại → INSERT
                 cursor.execute(
                     f"INSERT INTO `{csdl.TABLE_DU_AN}` "
-                    f"(name, url, host, dev, status, deadline, wp_version) "
-                    f"VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    f"(mada, name, url, host, dev, status, deadline, wp_version) "
+                    f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                     (
-                        du_lieu["name"], du_lieu["url"],
+                        du_lieu["mada"], ten, du_lieu["url"],
                         du_lieu["host"], du_lieu["dev"],
                         du_lieu["status"], du_lieu["deadline"],
                         du_lieu["wp_version"],
@@ -222,7 +233,7 @@ def import_vao_mysql(danh_sach_dict, che_do="bo_qua"):
 
         except Exception as e:
             that_bai += 1
-            ds_loi.append(f"Dự án '{du_lieu['name']}': {e}")
+            ds_loi.append(f"Dòng '{ten}': {e}")
 
     return {
         "thanh_cong": thanh_cong,
@@ -239,18 +250,20 @@ def tao_file_mau(duong_dan):
 
     mau = pd.DataFrame([
         {
+            "mada": "GKV_001",
             "name": "Website ABC",
             "url": "https://abc.vn",
-            "host": "123.45.67.89",
+            "host": "https://abc.vn",
             "dev": "ZN,NQ",
             "status": "Đang làm",
             "deadline": "2025-12-31",
             "wp_version": "6.4.3",
         },
         {
+            "mada": "GKV_002",
             "name": "Blog XYZ",
-            "url": "https://blog.xyz",
-            "host": "server02.xyz",
+            "url": "",
+            "host": "https://blog.xyz",
             "dev": "PNS",
             "status": "Hoàn thành",
             "deadline": "2025-06-15",
@@ -262,6 +275,7 @@ def tao_file_mau(duong_dan):
 def xuat_ra_excel(danh_sach_du_an, duong_dan):
     """
     Xuất list[dict] ra file Excel (.xlsx).
+    Header giống file import: mada, name, url, host, dev, status, deadline, wp_version.
     """
     if pd is None:
         raise ValueError(
@@ -275,24 +289,12 @@ def xuat_ra_excel(danh_sach_du_an, duong_dan):
     df = pd.DataFrame(danh_sach_du_an)
 
     # Đảm bảo đủ cột, theo thứ tự mong muốn
-    cot_xuat = ["id", "name", "url", "host", "dev",
+    cot_xuat = ["mada", "name", "url", "host", "dev",
                 "status", "deadline", "wp_version"]
     for cot in cot_xuat:
         if cot not in df.columns:
             df[cot] = ""
     df = df[cot_xuat]
-
-    # Đổi tên cột sang tiếng Việt cho dễ đọc
-    df = df.rename(columns={
-        "id": "Mã DA",
-        "name": "Tên dự án",
-        "url": "URL",
-        "host": "Host",
-        "dev": "Dev",
-        "status": "Trạng thái",
-        "deadline": "Hạn chót",
-        "wp_version": "Phiên bản WP",
-    })
 
     # Ghi ra Excel
     try:

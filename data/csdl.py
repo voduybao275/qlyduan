@@ -147,15 +147,33 @@ def khoi_tao_csdl():
             cursor2.execute(f"""
                 CREATE TABLE IF NOT EXISTS `{TABLE_DU_AN}` (
                     id         INT AUTO_INCREMENT PRIMARY KEY,
+                    mada       VARCHAR(50) NULL,
                     name       VARCHAR(255) NOT NULL,
                     url        VARCHAR(500),
                     host       VARCHAR(255),
                     dev        VARCHAR(255),
                     status     VARCHAR(50) DEFAULT 'Chưa bắt đầu',
                     deadline   DATE NULL,
-                    wp_version VARCHAR(50)
+                    wp_version VARCHAR(50),
+                    UNIQUE KEY uq_mada (mada)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """)
+
+            # Bảng tạo từ phiên bản cũ chưa có cột mada → bổ sung
+            cursor2.execute(f"SHOW COLUMNS FROM `{TABLE_DU_AN}` LIKE 'mada'")
+            if cursor2.fetchone() is None:
+                cursor2.execute(
+                    f"ALTER TABLE `{TABLE_DU_AN}` "
+                    f"ADD COLUMN `mada` VARCHAR(50) NULL AFTER `id`"
+                )
+            cursor2.execute(
+                f"SHOW INDEX FROM `{TABLE_DU_AN}` WHERE Key_name = 'uq_mada'"
+            )
+            if cursor2.fetchone() is None:
+                cursor2.execute(
+                    f"ALTER TABLE `{TABLE_DU_AN}` ADD UNIQUE KEY `uq_mada` (`mada`)"
+                )
+
             cnx2.commit()
             cursor2.close()
         return True, None
@@ -169,12 +187,15 @@ def khoi_tao_csdl():
 def lay_tat_ca_du_an():
     """
     Trả về list[dict] các dự án.
-    Mỗi dict: {"ma": ..., "ten": ..., "trang_thai": ...}
+    Mỗi dict: {"id", "mada", "name", "url", "host", "dev", "status", "deadline", "wp_version"}.
     """
     with ket_noi() as cnx:
         cursor = cnx.cursor(dictionary=True)
         cursor.execute(
-            f"SELECT id, name, url,host,dev, status, deadline, wp_version FROM `{TABLE_DU_AN}` ORDER BY id"
+            f"SELECT id, mada, name, url, host, dev, status, deadline, wp_version "
+            f"FROM `{TABLE_DU_AN}` "
+            # Dự án có mã đứng trước, sắp theo mã; dự án chưa có mã xuống cuối.
+            f"ORDER BY (mada IS NULL OR mada = ''), mada, id"
         )
         rows = cursor.fetchall()
         cursor.close()
@@ -193,7 +214,7 @@ def nhom_du_an_theo_wp_version():
     return sorted(nhom.items(), key=lambda item: (-len(item[1]), item[0]))
 
 
-def them_du_an(ten, url, host, dev, trang_thai,deadline):
+def them_du_an(mada, ten, url, host, dev, trang_thai, deadline):
     """
     Thêm dự án mới.
     Trả về (True, None) nếu OK, hoặc (False, thong_bao_loi) nếu lỗi.
@@ -203,22 +224,22 @@ def them_du_an(ten, url, host, dev, trang_thai,deadline):
             cursor = cnx.cursor()
             # Dùng parameterized query (%s) để chống SQL injection [citation:5][citation:13]
             cursor.execute(
-                f"INSERT INTO `{TABLE_DU_AN}` (name, url, host, dev, status, deadline) "
-                f"VALUES (%s, %s, %s, %s, %s, %s)",
-                (ten, url, host, dev, trang_thai,deadline),
+                f"INSERT INTO `{TABLE_DU_AN}` (mada, name, url, host, dev, status, deadline) "
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (mada or None, ten, url, host, dev, trang_thai, deadline),
             )
             cnx.commit()  # Bắt buộc commit với InnoDB [citation:3]
             cursor.close()
         return True, None
     except mysql.connector.Error as err:
         if err.errno == errorcode.ER_DUP_ENTRY:
-            return False, f"Mã dự án '{ma}' đã tồn tại."
+            return False, f"Mã dự án '{mada}' đã tồn tại."
         return False, f"Lỗi thêm dự án: {err}"
 
 
-def cap_nhat_du_an(id, name, url, host, dev, status, deadline):
+def cap_nhat_du_an(id, mada, name, url, host, dev, status, deadline):
     """
-    Cập nhật tên và trạng thái của dự án có mã `ma`.
+    Cập nhật thông tin của dự án theo id.
     Trả về (True, None) hoặc (False, thong_bao_loi).
     """
     try:
@@ -226,14 +247,16 @@ def cap_nhat_du_an(id, name, url, host, dev, status, deadline):
             cursor = cnx.cursor()
             cursor.execute(
                 f"UPDATE `{TABLE_DU_AN}` SET "
-                f"name=%s, url=%s, host=%s, dev=%s, status=%s, deadline=%s "
+                f"mada=%s, name=%s, url=%s, host=%s, dev=%s, status=%s, deadline=%s "
                 f"WHERE id=%s",
-                (name, url, host, dev, status, deadline, id),
+                (mada or None, name, url, host, dev, status, deadline, id),
             )
             cnx.commit()
             cursor.close()
         return True, None
     except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_DUP_ENTRY:
+            return False, f"Mã dự án '{mada}' đã tồn tại."
         return False, f"Lỗi cập nhật dự án: {err}"
 
 
@@ -254,6 +277,23 @@ def xoa_du_an(ma):
         return True, None
     except mysql.connector.Error as err:
         return False, f"Lỗi xóa dự án: {err}"
+
+
+def xoa_tat_ca_du_an():
+    """
+    Xóa toàn bộ dự án và đưa id tự tăng về 1.
+    Trả về (True, None) hoặc (False, thong_bao_loi).
+    """
+    try:
+        with ket_noi() as cnx:
+            cursor = cnx.cursor()
+            cursor.execute(f"DELETE FROM `{TABLE_DU_AN}`")
+            cursor.execute(f"ALTER TABLE `{TABLE_DU_AN}` AUTO_INCREMENT = 1")
+            cnx.commit()
+            cursor.close()
+        return True, None
+    except mysql.connector.Error as err:
+        return False, f"Lỗi reset dữ liệu dự án: {err}"
 
 
 # def kiem_tra_ket_noi():

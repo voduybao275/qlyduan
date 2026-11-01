@@ -14,6 +14,7 @@ dist/
 # Dữ liệu chạy máy local (chứa mật khẩu MySQL, cookie đăng nhập)
 database.db
 chrome_profile/
+backups/
 *.log
 
 # File sao lưu tay

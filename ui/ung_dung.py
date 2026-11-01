@@ -5,7 +5,7 @@ from data import csdl
 from ui.menu import tao_menu
 from ui.man_hinh import (
     trang_chu, tai_khoan, du_an,
-    nhan_vien, khach_hang, tro_giup,
+    nhan_vien, khach_hang, tro_giup, resize_hinh, cong_cu_wp,
 )
 
 
@@ -41,6 +41,9 @@ class UngDungQuanLy:
             "sua_du_an":    lambda: du_an.tao_form(self, "sua", self.du_an_dang_sua),
             "nhan_vien":    lambda: nhan_vien.tao(self),
             "khach_hang":   lambda: khach_hang.tao(self),
+            "resize_hinh":  lambda: resize_hinh.tao(self),
+            "cong_cu_wp":   lambda: cong_cu_wp.tao(self),
+            "thong_ke_wp":  lambda: du_an.thong_ke_wp_version(self),
             "huong_dan":    lambda: tro_giup.tao_huong_dan(self),
             "gioi_thieu":   lambda: tro_giup.tao_gioi_thieu(self),
         }
@@ -69,9 +72,12 @@ class UngDungQuanLy:
         # --- Lọc ---
         du_lieu_loc = []
         for da in self.danh_sach_du_an:
-            # 1. Tên chứa từ khóa?
-            if tu_khoa and tu_khoa not in (da["name"] or "").lower():
-                continue
+            # 1. Từ khóa khớp mã dự án hoặc tên dự án?
+            if tu_khoa:
+                ma = (da.get("mada") or "").lower()
+                ten = (da["name"] or "").lower()
+                if tu_khoa not in ma and tu_khoa not in ten:
+                    continue
 
             # 2. Dev có nằm trong nhóm được chọn?
             #    Cột "dev" lưu dạng "ZN,NQ" → tách thành set để so sánh
@@ -96,10 +102,18 @@ class UngDungQuanLy:
         tree = self.tree_du_an
         for item in tree.get_children():
             tree.delete(item)
-        for da in du_lieu_loc:
+        for stt, da in enumerate(du_lieu_loc, 1):
             tree.insert("", "end", values=(
-                da["id"], da["name"], da["url"], da["host"],
-                da["dev"], da["status"], da["deadline"], da["wp_version"],
+                stt,
+                da.get("mada") or da["id"],
+                da["name"],
+                da["url"],
+                da["host"],
+                da["dev"],
+                da["status"],
+                da["deadline"],
+                da["wp_version"],
+                da["id"],
             ))
 
 

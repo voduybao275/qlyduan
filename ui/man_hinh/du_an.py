@@ -191,11 +191,11 @@ def _cap_nhat_dong(ung_dung, item, version):
     """Cập nhật 1 dòng của bảng + cache, giữ nguyên bộ lọc đang dùng."""
     tree = ung_dung.tree_du_an
     values = list(tree.item(item, "values"))
-    if len(values) < 8:
+    if len(values) < 10:
         return
-    values[7] = version
+    values[8] = version
     tree.item(item, values=values)
-    id_du_an = str(values[0])
+    id_du_an = str(values[9])
     for da in ung_dung.danh_sach_du_an:
         if str(da["id"]) == id_du_an:
             da["wp_version"] = version
@@ -211,8 +211,8 @@ def update_wp_version(ung_dung):
 
     item = dong_chon[0]
     gia_tri = ung_dung.tree_du_an.item(item, "values")
-    id_du_an = gia_tri[0]
-    ten_du_an = gia_tri[1] if len(gia_tri) > 1 else str(id_du_an)
+    id_du_an = gia_tri[9]
+    ten_du_an = gia_tri[2] if len(gia_tri) > 2 else str(id_du_an)
 
     ung_dung.root.config(cursor="watch")
     ung_dung.root.update_idletasks()
@@ -253,8 +253,8 @@ def update_all_wp_version(ung_dung, max_workers: int = 10):
     du_lieu = []
     for item in items:
         gia_tri = ung_dung.tree_du_an.item(item, "values")
-        ten = gia_tri[1] if len(gia_tri) > 1 else str(gia_tri[0])
-        du_lieu.append((item, gia_tri[0], ten))
+        ten = gia_tri[2] if len(gia_tri) > 2 else str(gia_tri[9])
+        du_lieu.append((item, gia_tri[9], ten))
 
     tong = len(du_lieu)
     ten_theo_item = {item: ten for item, _, ten in du_lieu}
@@ -397,7 +397,7 @@ def _gan_sap_xep_cot(tree, cot_so=(), cot_phien_ban=()):
 
 
 def thong_ke_wp_version(ung_dung):
-    """Thống kê số dự án theo từng phiên bản WP; click 1 phiên bản để xem danh sách."""
+    """Vẽ màn hình thống kê số dự án theo từng phiên bản WP."""
     try:
         du_lieu = csdl.nhom_du_an_theo_wp_version()
     except Exception as e:
@@ -407,20 +407,18 @@ def thong_ke_wp_version(ung_dung):
     nhom = dict(du_lieu)
     tong = sum(len(ds) for ds in nhom.values())
 
-    cua_so = tk.Toplevel(ung_dung.root)
-    cua_so.title("Thống kê phiên bản WordPress")
-    cua_so.geometry("820x640")
-    cua_so.transient(ung_dung.root)
-    cua_so.grab_set()
+    khung = tk.Frame(ung_dung.vung_noi_dung, bg="#f0f0f0")
+    khung.pack(fill="both", expand=True)
 
     tk.Label(
-        cua_so,
+        khung,
         text=f"📊 THỐNG KÊ PHIÊN BẢN WP — {tong} dự án",
         font=("Arial", 12, "bold"),
+        bg="#f0f0f0",
     ).pack(pady=10)
 
     # ----- Bảng thống kê -----
-    frame_tk = tk.Frame(cua_so)
+    frame_tk = tk.Frame(khung, bg="#f0f0f0")
     frame_tk.pack(fill="x", padx=10, pady=(0, 8))
 
     tree_tk = ttk.Treeview(
@@ -446,14 +444,15 @@ def thong_ke_wp_version(ung_dung):
 
     # ----- Bảng chi tiết -----
     lbl_chi_tiet = tk.Label(
-        cua_so,
+        khung,
         text="Chọn một phiên bản để xem danh sách dự án",
         font=("Arial", 10, "bold"),
         anchor="w",
+        bg="#f0f0f0",
     )
     lbl_chi_tiet.pack(fill="x", padx=10, pady=(4, 4))
 
-    frame_ct = tk.Frame(cua_so)
+    frame_ct = tk.Frame(khung, bg="#f0f0f0")
     frame_ct.pack(fill="both", expand=True, padx=10, pady=(0, 8))
 
     tree_ct = ttk.Treeview(
@@ -507,7 +506,11 @@ def thong_ke_wp_version(ung_dung):
     tree_tk.bind("<<TreeviewSelect>>", _hien_danh_sach)
     tree_tk.bind("<Return>", _hien_danh_sach)
 
-    tk.Button(cua_so, text="Đóng", width=12, command=cua_so.destroy).pack(pady=(0, 10))
+    tk.Button(
+        khung,
+        text="← Về danh sách dự án",
+        command=lambda: ung_dung.hien_thi_noi_dung("du_an"),
+    ).pack(pady=(0, 10))
 
 
 # ======================================================================
@@ -551,7 +554,7 @@ def tao_danh_sach(ung_dung):
     filter_row = tk.Frame(ung_dung.vung_noi_dung, bg="#f0f0f0")
     filter_row.pack(fill="x", padx=20, pady=(0, 10)) 
 
-    tk.Label(filter_row, text="Tìm tên:", font=("Arial", 10, "bold"), bg="#f0f0f0").pack(side=tk.LEFT, padx=(0, 2))
+    tk.Label(filter_row, text="Tìm mã/tên:", font=("Arial", 10, "bold"), bg="#f0f0f0").pack(side=tk.LEFT, padx=(0, 2))
     ung_dung.entry_search_name = tk.Entry(filter_row, font=("Arial", 10), width=14)
     ung_dung.entry_search_name.pack(side=tk.LEFT, padx=5)
     ung_dung.entry_search_name.bind("<KeyRelease>", lambda event: ung_dung.load_data())
@@ -574,10 +577,18 @@ def tao_danh_sach(ung_dung):
     frame_bang = tk.Frame(ung_dung.vung_noi_dung)
     frame_bang.pack(fill="both", expand=True, padx=20, pady=10)
 
-    cot = ("id", "name", "url", "host", "dev", "status", "deadline", "wp_version")
-    tree = ttk.Treeview(frame_bang, columns=cot, show="headings", height=15)
+    cot = ("stt", "mada", "name", "url", "host", "dev", "status", "deadline", "wp_version", "id")
+    tree = ttk.Treeview(
+        frame_bang,
+        columns=cot,
+        show="headings",
+        height=15,
+        displaycolumns=("stt", "mada", "name", "url", "host", "dev",
+                        "status", "deadline", "wp_version"),
+    )
     
-    tree.heading("id", text="Mã DA")
+    tree.heading("stt", text="STT")
+    tree.heading("mada", text="Mã DA")
     tree.heading("name", text="Tên dự án")
     tree.heading("url", text="URL")
     tree.heading("host", text="Host")
@@ -586,14 +597,16 @@ def tao_danh_sach(ung_dung):
     tree.heading("deadline", text="Hạn chót")
     tree.heading("wp_version", text="Phiên bản WP")
 
-    tree.column("id", width=40)
-    tree.column("name", width=200)
+    tree.column("stt", width=50, anchor="center")
+    tree.column("mada", width=90)
+    tree.column("name", width=220)
     tree.column("url", width=200)
     tree.column("host", width=200)
     tree.column("dev", width=200)
     tree.column("status", width=150)
     tree.column("deadline", width=150)
     tree.column("wp_version", width=150)
+    tree.column("id", width=0, stretch=False)
 
     scroll_doc = ttk.Scrollbar(frame_bang, orient="vertical", command=tree.yview)
     scroll_ngang = ttk.Scrollbar(frame_bang, orient="horizontal", command=tree.xview)
@@ -620,8 +633,19 @@ def nap_danh_sach(ung_dung):
     tree = ung_dung.tree_du_an
     for item in tree.get_children():
         tree.delete(item)
-    for da in ung_dung.danh_sach_du_an:
-        tree.insert("", "end", values=(da["id"], da["name"], da["url"], da["host"], da["dev"], da["status"], da["deadline"], da["wp_version"]))
+    for stt, da in enumerate(ung_dung.danh_sach_du_an, 1):
+        tree.insert("", "end", values=(
+            stt,
+            da.get("mada") or da["id"],
+            da["name"],
+            da["url"],
+            da["host"],
+            da["dev"],
+            da["status"],
+            da["deadline"],
+            da["wp_version"],
+            da["id"],
+        ))
 
 
 # ======================================================================
@@ -638,7 +662,7 @@ def tao_form(ung_dung, che_do="them", du_lieu=None):
     frame_form = tk.Frame(ung_dung.vung_noi_dung, bg="#f0f0f0")
     frame_form.pack(pady=10)
 
-    tk.Label(frame_form, text="Mã dự án:", bg="#f0f0f0").grid(row=0, column=0, sticky="e", padx=10, pady=8)
+    tk.Label(frame_form, text="Mã dự án (VD: GKV_001):", bg="#f0f0f0").grid(row=0, column=0, sticky="e", padx=10, pady=8)
     entry_ma = tk.Entry(frame_form, width=40)
     entry_ma.grid(row=0, column=1, padx=10, pady=8)
 
@@ -679,7 +703,7 @@ def tao_form(ung_dung, che_do="them", du_lieu=None):
     entry_deadline.grid(row=6, column=1, padx=10, pady=8)
 
     if dang_sua:
-        entry_ma.insert(0, str(du_lieu.get("id", "")))
+        entry_ma.insert(0, du_lieu.get("mada") or "")
         entry_ten.insert(0, du_lieu.get("name") or "")
         entry_url.insert(0, du_lieu.get("url") or "")
         entry_host.insert(0, du_lieu.get("host") or "")
@@ -691,7 +715,6 @@ def tao_form(ung_dung, che_do="them", du_lieu=None):
             combo.current(0)
             
         entry_deadline.insert(0, du_lieu.get("deadline") or "")
-        entry_ma.config(state="readonly")
     else:
         combo.current(0)
 
@@ -711,9 +734,9 @@ def tao_form(ung_dung, che_do="them", du_lieu=None):
             return
 
         if dang_sua:
-            ok, loi = csdl.cap_nhat_du_an(du_lieu["id"], ten, url, host, dev, trang_thai, deadline)
+            ok, loi = csdl.cap_nhat_du_an(du_lieu["id"], ma, ten, url, host, dev, trang_thai, deadline)
         else:
-            ok, loi = csdl.them_du_an(ten, url, host, dev, trang_thai, deadline)
+            ok, loi = csdl.them_du_an(ma, ten, url, host, dev, trang_thai, deadline)
 
         if not ok:
             messagebox.showerror("Lỗi CSDL", loi)
@@ -735,7 +758,7 @@ def mo_form_sua(ung_dung):
         return
 
     gia_tri = ung_dung.tree_du_an.item(dong_chon[0], "values")
-    id_da = gia_tri[0]                        
+    id_da = gia_tri[9]
 
     for da in ung_dung.danh_sach_du_an:
         if str(da["id"]) == str(id_da):
@@ -755,18 +778,54 @@ def xoa(ung_dung):
         return
 
     gia_tri = ung_dung.tree_du_an.item(dong_chon[0], "values")
-    ma_da, ten_da = gia_tri[0], gia_tri[1]
+    ma_da, ten_da = gia_tri[1], gia_tri[2]
 
     tra_loi = messagebox.askyesno("Xác nhận xóa", f"Bạn có chắc muốn xóa dự án:\n\n  Mã: {ma_da}\n  Tên: {ten_da}\n\nHành động này không thể hoàn tác!")
     if not tra_loi: return
 
-    ok, loi = csdl.xoa_du_an(ma_da)
+    ok, loi = csdl.xoa_du_an(gia_tri[9])
     if not ok:
         messagebox.showerror("Lỗi CSDL", loi)
         return
 
     ung_dung.hien_thi_noi_dung("du_an")
     messagebox.showinfo("Đã xóa", f"Đã xóa dự án '{ten_da}'.")
+
+
+def reset_du_lieu_du_an(ung_dung):
+    """Xóa toàn bộ dự án trong CSDL sau 2 lần xác nhận."""
+    so_du_an = len(ung_dung.danh_sach_du_an)
+
+    if not messagebox.askyesno(
+        "Reset dữ liệu dự án",
+        f"Xóa TOÀN BỘ {so_du_an} dự án trong CSDL?\n\n"
+        "Dữ liệu sẽ mất hết và không thể hoàn tác.\n"
+        "Nên dùng 'Dữ liệu → Xuất Excel' để sao lưu trước khi reset.",
+        icon="warning",
+        parent=ung_dung.root,
+    ):
+        return
+
+    if not messagebox.askyesno(
+        "Xác nhận lần 2",
+        f"Bạn chắc chắn muốn XÓA VĨNH VIỄN {so_du_an} dự án?\n\n"
+        "Mã dự án mới sẽ bắt đầu lại từ 1.",
+        icon="warning",
+        parent=ung_dung.root,
+    ):
+        return
+
+    ok, loi = csdl.xoa_tat_ca_du_an()
+    if not ok:
+        messagebox.showerror("Lỗi reset dữ liệu", loi, parent=ung_dung.root)
+        return
+
+    ung_dung.hien_thi_noi_dung("du_an")
+    messagebox.showinfo(
+        "Đã reset",
+        f"Đã xóa toàn bộ {so_du_an} dự án. Bảng dự án hiện đang trống.",
+        parent=ung_dung.root,
+    )
 
 
 # ======================================================================
@@ -809,10 +868,11 @@ def _hien_thi_xem_truoc(ung_dung, duong_dan, df, du_lieu_hop_le, loi):
     frame_bang = tk.Frame(cua_so)
     frame_bang.pack(fill="both", expand=True, padx=10, pady=5)
 
-    cot = ("dong", "name", "url", "host", "dev", "status", "deadline", "wp_version", "trang_thai")
+    cot = ("dong", "mada", "name", "url", "host", "dev", "status", "deadline", "wp_version", "trang_thai")
     tree = ttk.Treeview(frame_bang, columns=cot, show="headings", height=15)
     
     tree.heading("dong", text="Dòng")
+    tree.heading("mada", text="Mã DA")
     tree.heading("name", text="Name")
     tree.heading("url", text="URL")
     tree.heading("host", text="Host")
@@ -823,6 +883,7 @@ def _hien_thi_xem_truoc(ung_dung, duong_dan, df, du_lieu_hop_le, loi):
     tree.heading("trang_thai", text="Kết quả")
 
     tree.column("dong", width=50, anchor="center")
+    tree.column("mada", width=90)
     tree.column("name", width=200)
     tree.column("url", width=150)
     tree.column("host", width=120)
@@ -841,18 +902,18 @@ def _hien_thi_xem_truoc(ung_dung, duong_dan, df, du_lieu_hop_le, loi):
     scroll.pack(side="right", fill="y")
 
     for i, du_lieu in enumerate(du_lieu_hop_le):
-        tree.insert("", "end", values=(i + 2, du_lieu["name"] or "", du_lieu["url"] or "", du_lieu["host"] or "", du_lieu["dev"] or "", du_lieu["status"] or "", du_lieu["deadline"] or "", du_lieu["wp_version"] or "", "✅ Hợp lệ"), tags=("ok",))
+        tree.insert("", "end", values=(i + 2, du_lieu["mada"] or "", du_lieu["name"] or "", du_lieu["url"] or "", du_lieu["host"] or "", du_lieu["dev"] or "", du_lieu["status"] or "", du_lieu["deadline"] or "", du_lieu["wp_version"] or "", "✅ Hợp lệ"), tags=("ok",))
 
     for loi_item in loi:
-        tree.insert("", "end", values=(loi_item["dong"], "—", "—", "—", "—", "—", "—", "—", f"❌ {loi_item['noi_dung']}"), tags=("loi",))
+        tree.insert("", "end", values=(loi_item["dong"], "—", "—", "—", "—", "—", "—", "—", "—", f"❌ {loi_item['noi_dung']}"), tags=("loi",))
 
     frame_che_do = tk.Frame(cua_so, bg="#f0f0f0")
     frame_che_do.pack(fill="x", padx=10, pady=5)
 
     tk.Label(frame_che_do, text="Chế độ:", font=("Arial", 10, "bold"), bg="#f0f0f0").pack(side="left", padx=(0, 10))
     bien_che_do = tk.StringVar(value="bo_qua")
-    tk.Radiobutton(frame_che_do, text="Bỏ qua nếu trùng tên", variable=bien_che_do, value="bo_qua", bg="#f0f0f0", font=("Arial", 10)).pack(side="left", padx=5)
-    tk.Radiobutton(frame_che_do, text="Ghi đè nếu trùng tên", variable=bien_che_do, value="ghi_de", bg="#f0f0f0", font=("Arial", 10)).pack(side="left", padx=5)
+    tk.Radiobutton(frame_che_do, text="Bỏ qua nếu trùng mã hoặc tên", variable=bien_che_do, value="bo_qua", bg="#f0f0f0", font=("Arial", 10)).pack(side="left", padx=5)
+    tk.Radiobutton(frame_che_do, text="Ghi đè nếu trùng mã hoặc tên", variable=bien_che_do, value="ghi_de", bg="#f0f0f0", font=("Arial", 10)).pack(side="left", padx=5)
 
     frame_nut = tk.Frame(cua_so, bg="#f0f0f0")
     frame_nut.pack(pady=10)
@@ -886,7 +947,7 @@ def xuat_excel(ung_dung):
             ds_xuat = []
             for item_id in dong_chon:
                 gia_tri = ung_dung.tree_du_an.item(item_id, "values")
-                id_da = gia_tri[0]
+                id_da = gia_tri[9]
                 for da in ung_dung.danh_sach_du_an:
                     if str(da["id"]) == str(id_da):
                         ds_xuat.append(da)

@@ -5,20 +5,49 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox
 
+from data import cau_hinh
 from data.tu_dong_wp import LoiTrinhDuyet, lay_trinh_duyet
+from ui.man_hinh.du_an import _is_valid_link, _lay_cac_link_kiem_tra
 
 BG = "#f2f2f2"
 
 
-def mo_cong_cu_wp(ung_dung):
-    """Mở cửa sổ WordPress Auto Manager."""
-    cua_so = tk.Toplevel(ung_dung.root)
-    cua_so.title("WordPress Auto Manager")
-    cua_so.geometry("780x900")
-    cua_so.minsize(700, 760)
-    cua_so.configure(bg=BG)
+def _du_an_dang_chon(ung_dung):
+    tree = getattr(ung_dung, "tree_du_an", None)
+    if tree is None or not tree.winfo_exists():
+        return None
 
-    khung = tk.Frame(cua_so, bg=BG)
+    dong_chon = tree.selection()
+    if not dong_chon:
+        return None
+
+    id_da = tree.item(dong_chon[0], "values")[9]
+    for da in ung_dung.danh_sach_du_an:
+        if str(da["id"]) == str(id_da):
+            return da
+    return None
+
+
+def _du_an_co_host(du_an):
+    return bool(du_an) and bool(_is_valid_link((du_an.get("host") or "").strip()))
+
+
+def mo_cong_cu_wp(ung_dung):
+    """Chuyển sang màn hình WordPress Auto Manager (dùng chung vùng nội dung)."""
+    # Lấy dự án đang chọn trước khi danh sách dự án bị thay bằng màn hình mới.
+    ung_dung.du_an_cho_cong_cu = _du_an_dang_chon(ung_dung)
+    ung_dung.hien_thi_noi_dung("cong_cu_wp")
+
+
+def tao(ung_dung):
+    """Vẽ màn hình WordPress Auto Manager vào vùng nội dung dùng chung."""
+    du_an_chon = getattr(ung_dung, "du_an_cho_cong_cu", None)
+    ung_dung.du_an_cho_cong_cu = None
+
+    khung_ngoai = tk.Frame(ung_dung.vung_noi_dung, bg=BG)
+    khung_ngoai.pack(fill="both", expand=True)
+
+    khung = tk.Frame(khung_ngoai, bg=BG)
     khung.pack(fill="both", expand=True, padx=12, pady=10)
 
     tk.Label(
@@ -54,7 +83,17 @@ def mo_cong_cu_wp(ung_dung):
     entry_url = tk.Entry(hang_nhap_url, font=("Arial", 10))
     entry_url.pack(side="left", fill="x", expand=True)
 
-    bien_dang_nhap_cms = tk.BooleanVar(value=False)
+    # Điền sẵn host/url của dự án đang chọn lúc mở công cụ
+    if du_an_chon:
+        cac_link = _lay_cac_link_kiem_tra(
+            du_an_chon.get("host"), du_an_chon.get("url")
+        )
+        if cac_link:
+            entry_url.insert(0, cac_link[0])
+
+    # Dự án có host thì mặc định bật "Đăng nhập CMS"; chỉ có url thì không
+    bien_dang_nhap_cms = tk.BooleanVar(value=_du_an_co_host(du_an_chon))
+
     tk.Checkbutton(
         hang_nhap_url,
         text="Đăng nhập CMS",
@@ -84,10 +123,14 @@ def mo_cong_cu_wp(ung_dung):
 
     entry_username = tk.Entry(luoi_tk, font=("Arial", 10))
     entry_username.grid(row=1, column=0, sticky="ew", pady=(4, 8))
-    entry_username.insert(0, "admin")
 
     entry_mat_khau = tk.Entry(luoi_tk, font=("Arial", 10), show="•")
     entry_mat_khau.grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=(4, 8))
+
+    # Nạp lại tài khoản đã lưu lần trước
+    cau_hinh_da_luu = cau_hinh.doc_cau_hinh()
+    entry_username.insert(0, cau_hinh_da_luu.get("wp_username") or "admin")
+    entry_mat_khau.insert(0, cau_hinh_da_luu.get("wp_password") or "")
 
     tk.Label(
         luoi_tk,
@@ -187,7 +230,7 @@ def mo_cong_cu_wp(ung_dung):
         url = entry_url.get().strip()
         if not url:
             messagebox.showwarning(
-                "Thiếu thông tin", "Vui lòng nhập URL Domain!", parent=cua_so
+                "Thiếu thông tin", "Vui lòng nhập URL Domain!", parent=ung_dung.root
             )
             return
         vao_dang_nhap = bien_dang_nhap_cms.get()
@@ -228,26 +271,56 @@ def mo_cong_cu_wp(ung_dung):
         for ten in tac_vu:
             if ten == "Tự động đăng nhập":
                 continue
+            if ten == "Backup (All-in-One WP Migration)":
+                _ghi_log("→ Backup (All-in-One WP Migration)...")
+                try:
+                    duong_dan = trinh_duyet.backup_ai1wm(url)
+                except LoiTrinhDuyet as e:
+                    _ghi_log(f"Backup thất bại: {e}")
+                    _ghi_log("Dừng quy trình vì chưa có bản backup an toàn.")
+                    return
+                _ghi_log(f"Backup hoàn tất: {duong_dan}")
+                continue
+            if ten == "Cập nhật WordPress Core":
+                _ghi_log("→ Cập nhật WordPress Core...")
+                try:
+                    phien_ban = trinh_duyet.cap_nhat_core(url)
+                except LoiTrinhDuyet as e:
+                    _ghi_log(f"Cập nhật WordPress thất bại: {e}")
+                    _ghi_log("Dừng quy trình vì WordPress Core chưa cập nhật được.")
+                    return
+                if phien_ban:
+                    _ghi_log(f"WordPress hiện tại: {phien_ban}")
+                continue
+            if ten == "Cập nhật tất cả Plugins":
+                _ghi_log("→ Cập nhật tất cả Plugins...")
+                try:
+                    danh_sach = trinh_duyet.cap_nhat_plugin(url)
+                except LoiTrinhDuyet as e:
+                    _ghi_log(f"Cập nhật plugin thất bại: {e}")
+                    return
+                _ghi_log(f"Hoàn tất cập nhật {len(danh_sach)} plugin.")
+                continue
             _ghi_log(f"→ {ten}: chưa hỗ trợ, sẽ bổ sung ở bước sau.")
 
     def _khi_bat_dau():
         url = entry_url.get().strip()
         if not url:
             messagebox.showwarning(
-                "Thiếu thông tin", "Vui lòng nhập URL Domain!", parent=cua_so
+                "Thiếu thông tin", "Vui lòng nhập URL Domain!", parent=ung_dung.root
             )
             return
 
         username = entry_username.get().strip()
         if not username:
             messagebox.showwarning(
-                "Thiếu thông tin", "Vui lòng nhập Username / Email!", parent=cua_so
+                "Thiếu thông tin", "Vui lòng nhập Username / Email!", parent=ung_dung.root
             )
             return
 
         password = entry_mat_khau.get()
         if not password:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập Mật khẩu!", parent=cua_so)
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập Mật khẩu!", parent=ung_dung.root)
             return
 
         captcha = entry_captcha.get().strip()
@@ -264,11 +337,20 @@ def mo_cong_cu_wp(ung_dung):
             tac_vu.append("Cập nhật tất cả Plugins")
         if not tac_vu:
             messagebox.showwarning(
-                "Chưa chọn tác vụ", "Vui lòng chọn ít nhất một tùy chọn tác vụ!", parent=cua_so
+                "Chưa chọn tác vụ", "Vui lòng chọn ít nhất một tùy chọn tác vụ!", parent=ung_dung.root
             )
             return
 
         tu_dong = bien_tu_dong_dang_nhap.get()
+
+        ok, loi = cau_hinh.ghi_cau_hinh(
+            {"wp_username": username, "wp_password": password}
+        )
+        if ok:
+            _ghi_log("Đã lưu tài khoản vào database.db.")
+        else:
+            _ghi_log(f"Không lưu được tài khoản: {loi}")
+
         _chay_nen(
             lambda trinh_duyet: _quy_trinh(
                 trinh_duyet, url, username, password, captcha, tu_dong, tac_vu
@@ -290,8 +372,10 @@ def mo_cong_cu_wp(ung_dung):
     nut_chay.pack(fill="x", pady=(2, 4))
 
     # ----- Đọc log + bật/tắt nút trên main thread -----
+    after_log = {"id": None}
+
     def _hut_log():
-        if not cua_so.winfo_exists():
+        if not khung_ngoai.winfo_exists():
             return
 
         while True:
@@ -307,9 +391,20 @@ def mo_cong_cu_wp(ung_dung):
         trang_thai_nut = "disabled" if trang_thai["dang_chay"] else "normal"
         nut_chrome.config(state=trang_thai_nut)
         nut_chay.config(state=trang_thai_nut)
-        cua_so.after(150, _hut_log)
+        after_log["id"] = khung_ngoai.after(150, _hut_log)
 
-    cua_so.after(150, _hut_log)
+    def _huy_hen_gio(event):
+        if event.widget is not khung_ngoai:
+            return
+        if after_log["id"] is not None:
+            try:
+                khung_ngoai.after_cancel(after_log["id"])
+            except tk.TclError:
+                pass
+            after_log["id"] = None
+
+    khung_ngoai.bind("<Destroy>", _huy_hen_gio)
+    after_log["id"] = khung_ngoai.after(150, _hut_log)
 
     entry_url.focus_set()
     _ghi_log("Sẵn sàng. Nhập URL Domain và bấm BẮT CHROME để bắt đầu.")
